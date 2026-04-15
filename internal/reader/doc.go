@@ -14,4 +14,8 @@
 // Each LogEntry carries the raw line, parsed fields, source label, and
 // an optional timestamp extracted from well-known field names
 // ("time", "timestamp", "ts", "@timestamp").
+//
+// Lines that are not valid JSON are not silently dropped; they are emitted
+// as LogEntry values with a nil Fields map and the parse error recorded in
+// the Err field, allowing callers to decide how to handle malformed input.
 package reader
