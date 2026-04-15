@@ -1,58 +1,72 @@
-// Package pipeline wires together source multiplexing, filtering,
-// and formatted output into a single cohesive processing loop.
 package pipeline
 
 import (
 	"context"
 	"io"
 
-	"github.com/user/logpipe/internal/filter"
-	"github.com/user/logpipe/internal/output"
-	"github.com/user/logpipe/internal/source"
+	"github.com/your-org/logpipe/internal/dedup"
+	"github.com/your-org/logpipe/internal/filter"
+	"github.com/your-org/logpipe/internal/metrics"
+	"github.com/your-org/logpipe/internal/output"
+	"github.com/your-org/logpipe/internal/sampler"
+	"github.com/your-org/logpipe/internal/source"
 )
 
-// Config holds the runtime options for a pipeline run.
+// Config holds all tunables for a pipeline run.
 type Config struct {
-	// Sources is the list of named log inputs to read from.
-	Sources []*source.Source
-	// Pattern is an optional grep pattern forwarded to the filter.
-	Pattern string
-	// CaseSensitive controls whether pattern matching is case-sensitive.
-	CaseSensitive bool
-	// FilterFields limits pattern matching to specific JSON field names.
-	FilterFields []string
-	// NoColor disables ANSI colour codes in output.
-	NoColor bool
-	// Out is the writer used for formatted output (defaults to os.Stdout).
-	Out io.Writer
+	Source      *source.Multiplexer
+	Filter      *filter.Filter
+	Formatter   *output.Formatter
+	Writer      io.Writer
+	Metrics     *metrics.Metrics
+	Dedup       *dedup.Deduplicator
+	Sampler     *sampler.Sampler
+	SampleRate  uint64 // 0/1 = disabled
 }
 
-// Run starts the pipeline and blocks until all sources are drained or
-// ctx is cancelled. It returns the number of entries written.
-func Run(ctx context.Context, cfg Config) (int, error) {
-	f := filter.New(filter.Options{
-		Pattern:       cfg.Pattern,
-		CaseSensitive: cfg.CaseSensitive,
-		Fields:        cfg.FilterFields,
-	})
+// Run reads entries from cfg.Source, applies dedup/sampling/filtering,
+// formats matching entries and writes them to cfg.Writer.
+// It blocks until ctx is cancelled or the source is exhausted.
+func Run(ctx context.Context, cfg Config) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 
-	fmt := output.New(output.Options{
-		NoColor: cfg.NoColor,
-		Out:     cfg.Out,
-	})
+		se, ok := cfg.Source.Next(ctx)
+		if !ok {
+			return nil
+		}
 
-	mux := source.NewMultiplexer(cfg.Sources...)
-	stream := mux.Stream(ctx)
+		if cfg.Metrics != nil {
+			cfg.Metrics.IncRead()
+		}
 
-	var written int
-	for entry := range stream {
-		if !f.Match(entry.Fields) {
+		if cfg.Dedup != nil && cfg.Dedup.IsDuplicate(se.Entry) {
+			if cfg.Metrics != nil {
+				cfg.Metrics.IncDropped()
+			}
 			continue
 		}
-		if err := fmt.Write(entry.Source, entry.Fields); err != nil {
-			return written, err
+
+		if cfg.Sampler != nil && !cfg.Sampler.Keep(se.Entry) {
+			if cfg.Metrics != nil {
+				cfg.Metrics.IncDropped()
+			}
+			continue
 		}
-		written++
+
+		if cfg.Filter != nil && !cfg.Filter.Match(se.Entry) {
+			continue
+		}
+
+		if cfg.Metrics != nil {
+			cfg.Metrics.IncMatched()
+		}
+
+		line := cfg.Formatter.Format(se.Source, se.Entry)
+		_, _ = io.WriteString(cfg.Writer, line+"\n")
 	}
-	return written, nil
 }
