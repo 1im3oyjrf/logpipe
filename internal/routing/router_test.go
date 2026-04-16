@@ -116,3 +116,27 @@ func TestTargets_ContainsDefault(t *testing.T) {
 	}
 	t.Error("expected default to be in targets")
 }
+
+func TestTargets_ContainsRuleTargets(t *testing.T) {
+	rules := []routing.Rule{
+		{Field: "level", Value: "error", Target: "errors"},
+		{Field: "service", Value: "auth", Target: "auth"},
+	}
+	r := routing.New(rules, 8)
+	defer r.Close()
+
+	targets := r.Targets()
+	want := []string{"errors", "auth", "default"}
+	for _, name := range want {
+		found := false
+		for _, t := range targets {
+			if t == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected target %q to be in targets list", name)
+		}
+	}
+}
