@@ -44,6 +44,14 @@ func TestFilter_CaseSensitive_NoMatch(t *testing.T) {
 	}
 }
 
+func TestFilter_CaseSensitive_Match(t *testing.T) {
+	f := filter.New("ERROR", nil, true)
+	entry := filter.Entry{"level": "ERROR", "msg": "failed"}
+	if !f.Match(entry) {
+		t.Error("expected case-sensitive filter to match exact uppercase 'ERROR'")
+	}
+}
+
 func TestFilter_SpecificFields(t *testing.T) {
 	f := filter.New("timeout", []string{"msg"}, false)
 
