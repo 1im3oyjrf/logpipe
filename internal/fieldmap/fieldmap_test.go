@@ -76,3 +76,22 @@ func TestRules_ReturnsCopy(t *testing.T) {
 		t.Fatal("Rules() should return an independent copy")
 	}
 }
+
+func TestApply_MultipleRenames(t *testing.T) {
+	m := fieldmap.New(fieldmap.Config{
+		Rules: map[string]string{
+			"msg":   "message",
+			"lvl":   "level",
+			"ts":    "timestamp",
+		},
+	})
+	out := m.Apply(map[string]any{"msg": "hello", "lvl": "warn", "ts": "2024-01-01"})
+	if out["message"] != "hello" || out["level"] != "warn" || out["timestamp"] != "2024-01-01" {
+		t.Fatalf("expected all fields renamed, got %v", out)
+	}
+	for _, old := range []string{"msg", "lvl", "ts"} {
+		if _, ok := out[old]; ok {
+			t.Fatalf("old key %q should be absent", old)
+		}
+	}
+}
