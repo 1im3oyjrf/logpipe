@@ -27,6 +27,15 @@ type Config struct {
 	Level string
 }
 
+// validLevels contains the accepted log level values.
+var validLevels = map[string]bool{
+	"":      true,
+	"debug": true,
+	"info":  true,
+	"warn":  true,
+	"error": true,
+}
+
 // Parse reads CLI flags and arguments, returning a populated Config.
 func Parse(args []string) (*Config, error) {
 	fs := flag.NewFlagSet("logpipe", flag.ContinueOnError)
@@ -39,6 +48,11 @@ func Parse(args []string) (*Config, error) {
 
 	if err := fs.Parse(args); err != nil {
 		return nil, fmt.Errorf("parsing flags: %w", err)
+	}
+
+	normalizedLevel := strings.ToLower(*level)
+	if !validLevels[normalizedLevel] {
+		return nil, fmt.Errorf("invalid level %q: must be one of debug, info, warn, error", *level)
 	}
 
 	sources := fs.Args()
@@ -62,6 +76,6 @@ func Parse(args []string) (*Config, error) {
 		CaseSensitive: *caseSensitive,
 		Fields:        fields,
 		NoColor:       *noColor,
-		Level:         strings.ToLower(*level),
+		Level:         normalizedLevel,
 	}, nil
 }
