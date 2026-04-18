@@ -52,3 +52,12 @@ type Snapshot struct {
 	ParseErrors  int64
 	Uptime       time.Duration
 }
+
+// MatchRate returns the fraction of read lines that were matched, in the
+// range [0.0, 1.0]. Returns 0 if no lines have been read.
+func (s Snapshot) MatchRate() float64 {
+	if s.LinesRead == 0 {
+		return 0
+	}
+	return float64(s.LinesMatched) / float64(s.LinesRead)
+}
