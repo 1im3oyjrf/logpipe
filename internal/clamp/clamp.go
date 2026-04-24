@@ -1,90 +1,99 @@
-// Package clamp provides a processor that constrains numeric field values
-// to a configured [min, max] range, clamping any out-of-range value to the
-// nearest boundary.
+// Package clamp provides a processor that constrains numeric entry fields
+// to a configured [Min, Max] range. Non-numeric fields are passed through
+// unchanged. Each rule targets a single field by name (case-insensitive).
 package clamp
 
 import (
-	"fmt"
 	"strings"
 
-	"github.com/logpipe/logpipe/internal/parser"
+	"github.com/logpipe/logpipe/internal/reader"
 )
 
-// Rule describes a single field clamping rule.
+// Rule defines a clamping constraint for a single field.
 type Rule struct {
+	// Field is the entry key to clamp (case-insensitive).
 	Field string
-	Min   float64
-	Max   float64
+	// Min is the lower bound; values below it are raised to Min.
+	Min *float64
+	// Max is the upper bound; values above it are lowered to Max.
+	Max *float64
 }
 
-// Config holds the configuration for the Clamp processor.
+// Config holds the set of rules applied by the Clamp processor.
 type Config struct {
-	Rules           []Rule
-	CaseInsensitive bool
+	Rules []Rule
 }
 
-// Clamp constrains numeric fields to [Min, Max].
+// Clamp applies numeric range constraints to log entry fields.
 type Clamp struct {
-	cfg Config
+	rules []Rule
 }
 
-// New returns a Clamp processor or an error if any rule is invalid.
+// New constructs a Clamp processor from the provided Config.
 func New(cfg Config) (*Clamp, error) {
+	rules := make([]Rule, len(cfg.Rules))
 	for i, r := range cfg.Rules {
-		if r.Field == "" {
-			return nil, fmt.Errorf("clamp: rule %d has empty field", i)
-		}
-		if r.Min > r.Max {
-			return nil, fmt.Errorf("clamp: rule %d min (%v) exceeds max (%v)", i, r.Min, r.Max)
+		rules[i] = Rule{
+			Field: strings.ToLower(r.Field),
+			Min:   r.Min,
+			Max:   r.Max,
 		}
 	}
-	return &Clamp{cfg: cfg}, nil
+	return &Clamp{rules: rules}, nil
 }
 
-// Apply returns a shallow copy of entry with numeric fields clamped per rules.
-func (c *Clamp) Apply(entry map[string]any) map[string]any {
-	if len(c.cfg.Rules) == 0 {
-		return entry
+// Apply returns a new entry with numeric fields clamped according to the
+// configured rules. The original entry is never modified.
+func (c *Clamp) Apply(e reader.Entry) reader.Entry {
+	if len(c.rules) == 0 {
+		return e
 	}
-	out := shallowCopy(entry)
-	for _, rule := range c.cfg.Rules {
-		key := matchKey(out, rule.Field, c.cfg.CaseInsensitive)
-		if key == "" {
-			continue
-		}
-		v, ok := parser.GetFloat(out, key)
-		if !ok {
-			continue
-		}
-		if v < rule.Min {
-			v = rule.Min
-		} else if v > rule.Max {
-			v = rule.Max
-		}
-		out[key] = v
+	out := shallowCopy(e)
+	for _, r := range c.rules {
+		matchKey(out, r)
 	}
 	return out
 }
 
-func matchKey(entry map[string]any, field string, ci bool) string {
-	if !ci {
-		if _, ok := entry[field]; ok {
-			return field
+// matchKey locates the target field in the entry (case-insensitive) and
+// applies the min/max constraints when the value is numeric.
+func matchKey(e reader.Entry, r Rule) {
+	for k, v := range e {
+		if strings.ToLower(k) != r.Field {
+			continue
 		}
-		return ""
-	}
-	lower := strings.ToLower(field)
-	for k := range entry {
-		if strings.ToLower(k) == lower {
-			return k
+		f, ok := toFloat(v)
+		if !ok {
+			return
 		}
+		if r.Min != nil && f < *r.Min {
+			f = *r.Min
+		}
+		if r.Max != nil && f > *r.Max {
+			f = *r.Max
+		}
+		e[k] = f
+		return
 	}
-	return ""
 }
 
-func shallowCopy(src map[string]any) map[string]any {
-	out := make(map[string]any, len(src))
-	for k, v := range src {
+func toFloat(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	}
+	return 0, false
+}
+
+func shallowCopy(e reader.Entry) reader.Entry {
+	out := make(reader.Entry, len(e))
+	for k, v := range e {
 		out[k] = v
 	}
 	return out

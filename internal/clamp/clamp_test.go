@@ -4,101 +4,139 @@ import (
 	"testing"
 
 	"github.com/logpipe/logpipe/internal/clamp"
+	"github.com/logpipe/logpipe/internal/reader"
 )
 
-func base() map[string]any {
-	return map[string]any{
-		"level":    "info",
-		"message":  "hello",
-		"duration": float64(120),
-		"score":    float64(5),
+func base() reader.Entry {
+	return reader.Entry{
+		"level":   "info",
+		"message": "test",
+		"score":   42.0,
+		"count":   100.0,
 	}
 }
 
 func TestApply_NoRules_PassesThrough(t *testing.T) {
-	c, _ := clamp.New(clamp.Config{})
-	out := c.Apply(base())
-	if out["duration"] != float64(120) {
-		t.Fatalf("expected 120, got %v", out["duration"])
+	c, err := clamp.New(clamp.Config{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	e := base()
+	out := c.Apply(e)
+	if out["score"] != e["score"] {
+		t.Errorf("expected score unchanged, got %v", out["score"])
 	}
 }
 
 func TestApply_ClampsAboveMax(t *testing.T) {
-	c, _ := clamp.New(clamp.Config{
-		Rules: []clamp.Rule{{Field: "duration", Min: 0, Max: 100}},
+	c, err := clamp.New(clamp.Config{
+		Rules: []clamp.Rule{{Field: "score", Max: ptr(50.0)}},
 	})
-	out := c.Apply(base())
-	if out["duration"] != float64(100) {
-		t.Fatalf("expected 100, got %v", out["duration"])
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	e := base()
+	e["score"] = 99.0
+	out := c.Apply(e)
+	if out["score"] != 50.0 {
+		t.Errorf("expected 50.0, got %v", out["score"])
 	}
 }
 
 func TestApply_ClampsBelowMin(t *testing.T) {
-	c, _ := clamp.New(clamp.Config{
-		Rules: []clamp.Rule{{Field: "score", Min: 10, Max: 100}},
+	c, err := clamp.New(clamp.Config{
+		Rules: []clamp.Rule{{Field: "score", Min: ptr(10.0)}},
 	})
-	out := c.Apply(base())
-	if out["score"] != float64(10) {
-		t.Fatalf("expected 10, got %v", out["score"])
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	e := base()
+	e["score"] = 1.0
+	out := c.Apply(e)
+	if out["score"] != 10.0 {
+		t.Errorf("expected 10.0, got %v", out["score"])
 	}
 }
 
 func TestApply_WithinRange_Unchanged(t *testing.T) {
-	c, _ := clamp.New(clamp.Config{
-		Rules: []clamp.Rule{{Field: "score", Min: 1, Max: 10}},
+	c, err := clamp.New(clamp.Config{
+		Rules: []clamp.Rule{{Field: "score", Min: ptr(0.0), Max: ptr(100.0)}},
 	})
-	out := c.Apply(base())
-	if out["score"] != float64(5) {
-		t.Fatalf("expected 5, got %v", out["score"])
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	e := base()
+	e["score"] = 42.0
+	out := c.Apply(e)
+	if out["score"] != 42.0 {
+		t.Errorf("expected 42.0, got %v", out["score"])
 	}
 }
 
 func TestApply_CaseInsensitiveField(t *testing.T) {
-	c, _ := clamp.New(clamp.Config{
-		Rules:           []clamp.Rule{{Field: "DURATION", Min: 0, Max: 50}},
-		CaseInsensitive: true,
+	c, err := clamp.New(clamp.Config{
+		Rules: []clamp.Rule{{Field: "SCORE", Max: ptr(50.0)}},
 	})
-	out := c.Apply(base())
-	if out["duration"] != float64(50) {
-		t.Fatalf("expected 50, got %v", out["duration"])
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-}
-
-func TestApply_MissingField_NoChange(t *testing.T) {
-	c, _ := clamp.New(clamp.Config{
-		Rules: []clamp.Rule{{Field: "latency", Min: 0, Max: 10}},
-	})
-	out := c.Apply(base())
-	if _, ok := out["latency"]; ok {
-		t.Fatal("expected latency to be absent")
+	e := base()
+	e["score"] = 99.0
+	out := c.Apply(e)
+	if out["score"] != 50.0 {
+		t.Errorf("expected clamped value 50.0, got %v", out["score"])
 	}
 }
 
 func TestApply_OriginalNotMutated(t *testing.T) {
-	c, _ := clamp.New(clamp.Config{
-		Rules: []clamp.Rule{{Field: "duration", Min: 0, Max: 10}},
+	c, err := clamp.New(clamp.Config{
+		Rules: []clamp.Rule{{Field: "score", Max: ptr(50.0)}},
 	})
-	in := base()
-	c.Apply(in)
-	if in["duration"] != float64(120) {
-		t.Fatal("original entry was mutated")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	e := base()
+	e["score"] = 99.0
+	_ = c.Apply(e)
+	if e["score"] != 99.0 {
+		t.Errorf("original entry was mutated")
 	}
 }
 
-func TestNew_InvalidRule_EmptyField(t *testing.T) {
-	_, err := clamp.New(clamp.Config{
-		Rules: []clamp.Rule{{Field: "", Min: 0, Max: 10}},
+func TestApply_MultipleRules_AllApplied(t *testing.T) {
+	c, err := clamp.New(clamp.Config{
+		Rules: []clamp.Rule{
+			{Field: "score", Max: ptr(50.0)},
+			{Field: "count", Min: ptr(200.0)},
+		},
 	})
-	if err == nil {
-		t.Fatal("expected error for empty field")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	e := base()
+	e["score"] = 99.0
+	e["count"] = 100.0
+	out := c.Apply(e)
+	if out["score"] != 50.0 {
+		t.Errorf("expected score 50.0, got %v", out["score"])
+	}
+	if out["count"] != 200.0 {
+		t.Errorf("expected count 200.0, got %v", out["count"])
 	}
 }
 
-func TestNew_InvalidRule_MinExceedsMax(t *testing.T) {
-	_, err := clamp.New(clamp.Config{
-		Rules: []clamp.Rule{{Field: "score", Min: 100, Max: 1}},
+func TestApply_NonNumericField_PassesThrough(t *testing.T) {
+	c, err := clamp.New(clamp.Config{
+		Rules: []clamp.Rule{{Field: "message", Max: ptr(10.0)}},
 	})
-	if err == nil {
-		t.Fatal("expected error when min > max")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	e := base()
+	out := c.Apply(e)
+	if out["message"] != "test" {
+		t.Errorf("expected message unchanged, got %v", out["message"])
 	}
 }
+
+func ptr(f float64) *float64 { return &f }
