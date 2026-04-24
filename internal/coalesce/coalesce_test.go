@@ -99,3 +99,21 @@ func TestApply_AllSourcesEmpty_TargetNotSet(t *testing.T) {
 		t.Fatal("expected canonical not to be set")
 	}
 }
+
+// TestApply_TargetSameAsSource verifies that when the target field name matches
+// one of the sources, the value is correctly promoted and the source is removed.
+func TestApply_TargetSameAsSource(t *testing.T) {
+	tr := coalesce.New(coalesce.Config{
+		Rules: []coalesce.Rule{
+			{Sources: []string{"msg", "message"}, Target: "message", KeepSources: false},
+		},
+	})
+	in := map[string]any{"msg": "preferred"}
+	out := tr.Apply(in)
+	if out["message"] != "preferred" {
+		t.Fatalf("expected message=preferred, got %v", out["message"])
+	}
+	if _, ok := out["msg"]; ok {
+		t.Fatal("expected msg to be removed")
+	}
+}
