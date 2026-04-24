@@ -41,3 +41,10 @@ func (m *Manager) Size() int {
 	defer m.mu.Unlock()
 	return len(m.buf.Snapshot())
 }
+
+// Reset clears all entries from the ring buffer, discarding recorded history.
+func (m *Manager) Reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.buf.Clear()
+}
