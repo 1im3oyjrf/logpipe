@@ -65,6 +65,15 @@ func (f *Filter) Size() int {
 	return len(f.seen)
 }
 
+// Reset clears all tracked entries from the dedup window, effectively
+// resetting the filter state. Subsequent entries will not be considered
+// duplicates of anything seen before the reset.
+func (f *Filter) Reset() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.seen = make(map[string]time.Time)
+}
+
 func hashEntry(entry reader.Entry) string {
 	h := sha256.New()
 	h.Write([]byte(entry.Level))
