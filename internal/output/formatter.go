@@ -13,12 +13,12 @@ import (
 // Level colors for log level highlighting.
 var (
 	levelColors = map[string]*color.Color{
-		"debug": color.New(color.FgCyan),
-		"info":  color.New(color.FgGreen),
-		"warn":  color.New(color.FgYellow),
+		"debug":   color.New(color.FgCyan),
+		"info":    color.New(color.FgGreen),
+		"warn":    color.New(color.FgYellow),
 		"warning": color.New(color.FgYellow),
-		"error": color.New(color.FgRed),
-		"fatal": color.New(color.FgRed, color.Bold),
+		"error":   color.New(color.FgRed),
+		"fatal":   color.New(color.FgRed, color.Bold),
 	}
 	defaultColor = color.New(color.FgWhite)
 	keyColor     = color.New(color.FgBlue)
@@ -119,6 +119,8 @@ func (f *Formatter) extractMessage(e map[string]interface{}) string {
 	return ""
 }
 
+// levelColor returns the color associated with the given log level.
+// Falls back to defaultColor for unrecognised levels.
 func levelColor(level string) *color.Color {
 	if c, ok := levelColors[level]; ok {
 		return c
