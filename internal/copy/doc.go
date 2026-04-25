@@ -4,6 +4,10 @@
 // making it easy to tag copied entries with a different source, environment,
 // or routing label without mutating the original.
 //
+// The stage guarantees that the original entry is always forwarded before its
+// clone, preserving relative ordering within the output channel. If the
+// context is cancelled, both sends are abandoned cleanly without blocking.
+//
 // Usage:
 //
 //	copier := copy.New(copy.Config{
